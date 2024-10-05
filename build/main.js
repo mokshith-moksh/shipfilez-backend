@@ -86,9 +86,6 @@ function requestHostToSendOffer(ws, msg) {
     }));
 }
 function SendOfferToClient(ws, msg) {
-    console.log("reached to send offer to client");
-    // sharecode is coming null;
-    console.log(msg);
     const shareCode = msg.shareCode;
     const clientId = msg.clientId;
     const session = sessions[shareCode];
@@ -134,12 +131,15 @@ function ExchangeIceCandidate(ws, msg) {
         }));
         return;
     }
+    console.log("Client ID from massage", msg.from);
     const clientWs = session.clients.find((client) => client.clientId === msg.clientId);
     if (ws === session.hostWS) {
         if (clientWs === null || clientWs === void 0 ? void 0 : clientWs.clientWS) {
             clientWs.clientWS.send(JSON.stringify({
                 event: EventType.IceCandidate,
                 candidate: msg.candidate,
+                clientId: msg.clientId,
+                shareCode: msg.shareCode,
             }));
         }
     }
@@ -147,6 +147,8 @@ function ExchangeIceCandidate(ws, msg) {
         session.hostWS.send(JSON.stringify({
             event: EventType.IceCandidate,
             candidate: msg.candidate,
+            clientId: msg.clientId,
+            shareCode: msg.shareCode,
         }));
     }
     else {

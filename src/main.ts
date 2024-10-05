@@ -31,6 +31,7 @@ interface typeExchangeIceCandidate {
   shareCode: string;
   clientId: string;
   candidate: any;
+  from: string;
 }
 enum EventType {
   RequestShareCode = "EVENT_REQUEST_SHARE_CODE",
@@ -150,9 +151,6 @@ function requestHostToSendOffer(
 }
 
 function SendOfferToClient(ws: WebSocket, msg: typeSendOfferToClient): void {
-  console.log("reached to send offer to client");
-  // sharecode is coming null;
-  console.log(msg);
   const shareCode = msg.shareCode;
   const clientId = msg.clientId;
   const session = sessions[shareCode];
@@ -214,17 +212,18 @@ function ExchangeIceCandidate(
     );
     return;
   }
-
+  console.log("Client ID from massage", msg.from);
   const clientWs = session.clients.find(
     (client) => client.clientId === msg.clientId
   );
-
   if (ws === session.hostWS) {
     if (clientWs?.clientWS) {
       clientWs.clientWS.send(
         JSON.stringify({
           event: EventType.IceCandidate,
           candidate: msg.candidate,
+          clientId: msg.clientId,
+          shareCode: msg.shareCode,
         })
       );
     }
@@ -233,6 +232,8 @@ function ExchangeIceCandidate(
       JSON.stringify({
         event: EventType.IceCandidate,
         candidate: msg.candidate,
+        clientId: msg.clientId,
+        shareCode: msg.shareCode,
       })
     );
   } else {

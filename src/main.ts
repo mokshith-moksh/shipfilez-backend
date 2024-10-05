@@ -1,33 +1,54 @@
 import { WebSocketServer, WebSocket } from "ws";
-import { v4 as uuidv4 } from "uuid";
-
-interface Message {
-  event: EventType;
-  data?: any;
-  destination?: string;
-  origin?: string;
-  sdp?: any;
-  nuberOfFile?: number;
-  candidate?: any;
-  from?: string;
+interface typeShareCode {
+  event: EventType.RequestShareCode;
+  fileName: string[];
+  fileLength: number;
+}
+interface typeGenClientId {
+  event: EventType.RequestClientId;
+  shareCode: string;
+}
+interface typeRequestHostToSendOfferMsg {
+  event: EventType.RequestHostToSendOffer;
+  shareCode: string;
+  clientId: string;
 }
 
+interface typeSendOfferToClient {
+  event: EventType.SendOfferToClient;
+  shareCode: string;
+  clientId: string;
+  offer: any;
+}
+interface typeSendAnswerToHost {
+  event: EventType.SendAnswerToHost;
+  shareCode: string;
+  clientId: string;
+  answer: any;
+}
+interface typeExchangeIceCandidate {
+  event: EventType.IceCandidate;
+  shareCode: string;
+  clientId: string;
+  candidate: any;
+}
 enum EventType {
   RequestShareCode = "EVENT_REQUEST_SHARE_CODE",
-  ConnectionRequest = "EVENT_CONNECTION_REQUEST",
-  RemoteDescription = "EVENT_REMOTE_DESCRIPTION",
+  RequestClientId = "EVENT_REQUEST_CLIENT_ID",
+  SendOfferToClient = "EVENT_OFFER",
+  SendAnswerToHost = "EVENT_ANSWER",
   IceCandidate = "EVENT_ICE_CANDIDATE",
-  Heartbeat = "EVENT_HEARTBEAT",
-  ConnectionAccept = "EVENT_CONNECTION_ACCEPT",
+  RequestHostToSendOffer = "EVENT_REQUEST_HOST_TO_SEND_OFFER",
 }
 
 const wss = new WebSocketServer({ port: 8080 });
-
 const sessions: {
   [shareCode: string]: {
     hostWS: WebSocket;
+    fileName: string[];
+    fileLength: number;
     clients: {
-      originId: string;
+      clientId: string;
       clientWS: WebSocket;
     }[];
   };
@@ -37,151 +58,191 @@ wss.on("connection", (ws: WebSocket) => {
   console.log("New client connected");
 
   ws.on("message", (message: string) => {
-    const msg: Message = JSON.parse(message);
+    const msg = JSON.parse(message);
 
     switch (msg.event) {
       case EventType.RequestShareCode:
-        handleShareCodeRequest(ws);
+        handleShareCodeRequest(ws, msg);
         break;
 
-      case EventType.ConnectionRequest:
-        handleConnectionRequest(ws, msg);
+      case EventType.RequestClientId:
+        genrateClientIdRequest(ws, msg);
         break;
 
-      case EventType.ConnectionAccept:
-        handleConnectionAccept(msg);
+      case EventType.RequestHostToSendOffer:
+        requestHostToSendOffer(ws, msg);
         break;
 
-      case EventType.RemoteDescription:
+      case EventType.SendOfferToClient:
+        SendOfferToClient(ws, msg);
+        break;
+
+      case EventType.SendAnswerToHost:
+        SendAnswerToHost(msg);
+        break;
+
       case EventType.IceCandidate:
-        relayMessage(msg);
-        break;
-
-      case EventType.Heartbeat:
-        handleHeartbeat(ws);
+        ExchangeIceCandidate(ws, msg);
         break;
 
       default:
         console.log("Unknown event:", msg.event);
     }
   });
-
   ws.on("close", () => {
     console.log("Client disconnected");
-    // Optionally, you can handle cleanup
   });
 });
 
-// Generate a unique share code for the host and store the session
-function handleShareCodeRequest(ws: WebSocket): void {
+function handleShareCodeRequest(ws: WebSocket, msg: typeShareCode): void {
   const shareCode = generateShareCode();
-
-  // Create a new session with hostWS and empty clients array
-  sessions[shareCode] = { hostWS: ws, clients: [] };
-
-  // Send share code back to the host
+  sessions[shareCode] = {
+    hostWS: ws,
+    clients: [],
+    fileLength: msg.fileLength,
+    fileName: msg.fileName,
+  };
   ws.send(
     JSON.stringify({
       event: EventType.RequestShareCode,
+      fileLength: msg.fileLength,
+      fileName: msg.fileName,
       shareCode,
     })
   );
-
   console.log("Created session:", shareCode);
 }
 
-// Handle connection request from a client using the share code
-function handleConnectionRequest(ws: WebSocket, msg: Message): void {
-  const { destination } = msg;
-  console.log(destination);
-  if (!destination || !sessions[destination]) {
-    ws.send(JSON.stringify({ error: "Host not found" }));
+function genrateClientIdRequest(ws: WebSocket, msg: typeGenClientId): void {
+  const clientId = generateUniqueOrigin();
+  const session = sessions[msg.shareCode];
+  if (!session) {
+    ws.send(JSON.stringify({ event: "ERROR", message: "Invalid share code" }));
     return;
   }
+  session.clients.push({ clientId, clientWS: ws });
+  ws.send(
+    JSON.stringify({
+      event: EventType.RequestClientId,
+      clientId,
+      fileName: session.fileName,
+      fileLength: session.fileLength,
+      shareCode: msg.shareCode,
+    })
+  );
+  console.log(`Client ${clientId} added to session ${msg.shareCode}`);
+}
 
-  // Get the session by share code
-  const session = sessions[destination];
+function requestHostToSendOffer(
+  ws: WebSocket,
 
-  // Generate a unique origin ID for the client
-  const assignedOrigin = generateUniqueOrigin();
+  msg: typeRequestHostToSendOfferMsg
+): void {
+  console.log("shareCode " + msg.shareCode);
+  const hostWs = sessions[msg.shareCode].hostWS;
+  hostWs.send(
+    JSON.stringify({
+      event: EventType.RequestHostToSendOffer,
+      clientId: msg.clientId,
+      shareCode: msg.shareCode,
+    })
+  );
+}
 
-  // Store the client's information in the session
-  session.clients.push({ originId: assignedOrigin, clientWS: ws });
+function SendOfferToClient(ws: WebSocket, msg: typeSendOfferToClient): void {
+  console.log("reached to send offer to client");
+  // sharecode is coming null;
+  console.log(msg);
+  const shareCode = msg.shareCode;
+  const clientId = msg.clientId;
+  const session = sessions[shareCode];
+  if (!session || session.hostWS !== ws) {
+    console.log("Host not fount", shareCode);
+    ws.send(
+      JSON.stringify({
+        event: "NOT_A_HOST",
+      })
+    );
+    return;
+  }
+  const clientWs = session.clients.find(
+    (client) => client.clientId === clientId
+  );
+  if (!clientWs) {
+    console.log("Client not fount");
+    JSON.stringify({
+      event: "NO_CLIENT_FOUND",
+    });
+    return;
+  }
+  clientWs.clientWS.send(
+    JSON.stringify({
+      event: EventType.SendOfferToClient,
+      offer: msg.offer,
+      shareCode,
+      clientId,
+    })
+  );
+}
 
-  // Notify the host of the new connection request
+function SendAnswerToHost(msg: typeSendAnswerToHost): void {
+  const shareCode = msg.shareCode;
+  const clientId = msg.clientId;
+  const session = sessions[shareCode];
   session.hostWS.send(
     JSON.stringify({
-      event: EventType.ConnectionRequest,
-      origin: assignedOrigin,
-      shareCode: destination,
+      event: EventType.SendAnswerToHost,
+      answer: msg.answer,
+      shareCode,
+      clientId,
     })
   );
-
-  // Respond to the client with connection success
-  ws.send(
-    JSON.stringify({
-      event: EventType.ConnectionRequest,
-      data: { assignedOrigin, success: true },
-    })
-  );
-
-  console.log("Client connected to session:", destination);
 }
 
-function handleConnectionAccept(msg: Message) {
-  const { destination, nuberOfFile, origin } = msg;
-  if (!destination) {
-    console.log("there is no destination/shareCode");
+function ExchangeIceCandidate(
+  ws: WebSocket,
+  msg: typeExchangeIceCandidate
+): void {
+  const session = sessions[msg.shareCode];
+
+  if (!session) {
+    ws.send(
+      JSON.stringify({
+        event: "ERROR",
+        message: "Invalid share code",
+      })
+    );
     return;
   }
-  const session = sessions[destination];
-  const clientWs = session.clients.find((client) => client.originId === origin);
-  clientWs?.clientWS.send(
-    JSON.stringify({
-      event: EventType.ConnectionAccept,
-      fileLength: nuberOfFile,
-      destination,
-      origin,
-    })
-  );
-  console.log(sessions);
-}
 
-// Relay SDP offers/answers and ICE candidates between peers
-function relayMessage(msg: Message): void {
-  console.log(JSON.stringify(msg.from));
-  console.log(JSON.stringify(msg.destination));
-  const { destination } = msg;
-  if (destination) {
-    // Check if destination is a host and relay to the host
-    if (sessions[destination]) {
-      console.log("Message sent to HOST");
-      sessions[destination].hostWS.send(JSON.stringify(msg));
-    } else {
-      // Relay to the specific client
-      console.log("Message sent to CLIENT");
-      Object.values(sessions).forEach((session) => {
-        const client = session.clients.find(
-          (client) => client.originId === destination
-        );
-        if (client) {
-          client.clientWS.send(JSON.stringify(msg));
-        }
-      });
+  const clientWs = session.clients.find(
+    (client) => client.clientId === msg.clientId
+  );
+
+  if (ws === session.hostWS) {
+    if (clientWs?.clientWS) {
+      clientWs.clientWS.send(
+        JSON.stringify({
+          event: EventType.IceCandidate,
+          candidate: msg.candidate,
+        })
+      );
     }
+  } else if (clientWs?.clientWS === ws) {
+    session.hostWS.send(
+      JSON.stringify({
+        event: EventType.IceCandidate,
+        candidate: msg.candidate,
+      })
+    );
   } else {
-    console.log(`No peer found for destination: ${destination}`);
+    ws.send(
+      JSON.stringify({
+        event: "ERROR",
+        message: "Invalid client",
+      })
+    );
   }
-}
-
-// Handle heartbeat to keep the connection alive
-function handleHeartbeat(ws: WebSocket): void {
-  ws.send(
-    JSON.stringify({
-      event: EventType.Heartbeat,
-      data: { timestamp: new Date().toISOString() },
-    })
-  );
 }
 
 // Helper function to generate a random share code

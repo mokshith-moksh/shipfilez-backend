@@ -4,11 +4,11 @@ const ws_1 = require("ws");
 var EventType;
 (function (EventType) {
     EventType["RequestShareCode"] = "EVENT_REQUEST_SHARE_CODE";
-    EventType["ConnectionRequest"] = "EVENT_CONNECTION_REQUEST";
-    EventType["RemoteDescription"] = "EVENT_REMOTE_DESCRIPTION";
+    EventType["RequestClientId"] = "EVENT_REQUEST_CLIENT_ID";
+    EventType["SendOfferToClient"] = "EVENT_OFFER";
+    EventType["SendAnswerToHost"] = "EVENT_ANSWER";
     EventType["IceCandidate"] = "EVENT_ICE_CANDIDATE";
-    EventType["Heartbeat"] = "EVENT_HEARTBEAT";
-    EventType["ConnectionAccept"] = "EVENT_CONNECTION_ACCEPT";
+    EventType["RequestHostToSendOffer"] = "EVENT_REQUEST_HOST_TO_SEND_OFFER";
 })(EventType || (EventType = {}));
 const wss = new ws_1.WebSocketServer({ port: 8080 });
 const sessions = {};
@@ -18,20 +18,22 @@ wss.on("connection", (ws) => {
         const msg = JSON.parse(message);
         switch (msg.event) {
             case EventType.RequestShareCode:
-                handleShareCodeRequest(ws);
+                handleShareCodeRequest(ws, msg);
                 break;
-            case EventType.ConnectionRequest:
-                handleConnectionRequest(ws, msg);
+            case EventType.RequestClientId:
+                genrateClientIdRequest(ws, msg);
                 break;
-            case EventType.ConnectionAccept:
-                handleConnectionAccept(msg);
+            case EventType.RequestHostToSendOffer:
+                requestHostToSendOffer(ws, msg);
                 break;
-            case EventType.RemoteDescription:
+            case EventType.SendOfferToClient:
+                SendOfferToClient(ws, msg);
+                break;
+            case EventType.SendAnswerToHost:
+                SendAnswerToHost(msg);
+                break;
             case EventType.IceCandidate:
-                relayMessage(msg);
-                break;
-            case EventType.Heartbeat:
-                handleHeartbeat(ws);
+                ExchangeIceCandidate(ws, msg);
                 break;
             default:
                 console.log("Unknown event:", msg.event);
@@ -39,96 +41,120 @@ wss.on("connection", (ws) => {
     });
     ws.on("close", () => {
         console.log("Client disconnected");
-        // Optionally, you can handle cleanup
     });
 });
-// Generate a unique share code for the host and store the session
-function handleShareCodeRequest(ws) {
+function handleShareCodeRequest(ws, msg) {
     const shareCode = generateShareCode();
-    // Create a new session with hostWS and empty clients array
-    sessions[shareCode] = { hostWS: ws, clients: [] };
-    // Send share code back to the host
+    sessions[shareCode] = {
+        hostWS: ws,
+        clients: [],
+        fileLength: msg.fileLength,
+        fileName: msg.fileName,
+    };
     ws.send(JSON.stringify({
         event: EventType.RequestShareCode,
+        fileLength: msg.fileLength,
+        fileName: msg.fileName,
         shareCode,
     }));
     console.log("Created session:", shareCode);
 }
-// Handle connection request from a client using the share code
-function handleConnectionRequest(ws, msg) {
-    const { destination } = msg;
-    console.log(destination);
-    if (!destination || !sessions[destination]) {
-        ws.send(JSON.stringify({ error: "Host not found" }));
+function genrateClientIdRequest(ws, msg) {
+    const clientId = generateUniqueOrigin();
+    const session = sessions[msg.shareCode];
+    if (!session) {
+        ws.send(JSON.stringify({ event: "ERROR", message: "Invalid share code" }));
         return;
     }
-    // Get the session by share code
-    const session = sessions[destination];
-    // Generate a unique origin ID for the client
-    const assignedOrigin = generateUniqueOrigin();
-    // Store the client's information in the session
-    session.clients.push({ originId: assignedOrigin, clientWS: ws });
-    // Notify the host of the new connection request
-    session.hostWS.send(JSON.stringify({
-        event: EventType.ConnectionRequest,
-        origin: assignedOrigin,
-        shareCode: destination,
-    }));
-    // Respond to the client with connection success
+    session.clients.push({ clientId, clientWS: ws });
     ws.send(JSON.stringify({
-        event: EventType.ConnectionRequest,
-        data: { assignedOrigin, success: true },
+        event: EventType.RequestClientId,
+        clientId,
+        fileName: session.fileName,
+        fileLength: session.fileLength,
+        shareCode: msg.shareCode,
     }));
-    console.log("Client connected to session:", destination);
+    console.log(`Client ${clientId} added to session ${msg.shareCode}`);
 }
-function handleConnectionAccept(msg) {
-    const { destination, nuberOfFile, origin } = msg;
-    if (!destination) {
-        console.log("there is no destination/shareCode");
+function requestHostToSendOffer(ws, msg) {
+    console.log("shareCode " + msg.shareCode);
+    const hostWs = sessions[msg.shareCode].hostWS;
+    hostWs.send(JSON.stringify({
+        event: EventType.RequestHostToSendOffer,
+        clientId: msg.clientId,
+        shareCode: msg.shareCode,
+    }));
+}
+function SendOfferToClient(ws, msg) {
+    console.log("reached to send offer to client");
+    // sharecode is coming null;
+    console.log(msg);
+    const shareCode = msg.shareCode;
+    const clientId = msg.clientId;
+    const session = sessions[shareCode];
+    if (!session || session.hostWS !== ws) {
+        console.log("Host not fount", shareCode);
+        ws.send(JSON.stringify({
+            event: "NOT_A_HOST",
+        }));
         return;
     }
-    const session = sessions[destination];
-    const clientWs = session.clients.find((client) => client.originId === origin);
-    clientWs === null || clientWs === void 0 ? void 0 : clientWs.clientWS.send(JSON.stringify({
-        event: EventType.ConnectionAccept,
-        fileLength: nuberOfFile,
-        destination,
-        origin,
+    const clientWs = session.clients.find((client) => client.clientId === clientId);
+    if (!clientWs) {
+        console.log("Client not fount");
+        JSON.stringify({
+            event: "NO_CLIENT_FOUND",
+        });
+        return;
+    }
+    clientWs.clientWS.send(JSON.stringify({
+        event: EventType.SendOfferToClient,
+        offer: msg.offer,
+        shareCode,
+        clientId,
     }));
-    console.log(sessions);
 }
-// Relay SDP offers/answers and ICE candidates between peers
-function relayMessage(msg) {
-    console.log(JSON.stringify(msg.from));
-    console.log(JSON.stringify(msg.destination));
-    const { destination } = msg;
-    if (destination) {
-        // Check if destination is a host and relay to the host
-        if (sessions[destination]) {
-            console.log("Message sent to HOST");
-            sessions[destination].hostWS.send(JSON.stringify(msg));
+function SendAnswerToHost(msg) {
+    const shareCode = msg.shareCode;
+    const clientId = msg.clientId;
+    const session = sessions[shareCode];
+    session.hostWS.send(JSON.stringify({
+        event: EventType.SendAnswerToHost,
+        answer: msg.answer,
+        shareCode,
+        clientId,
+    }));
+}
+function ExchangeIceCandidate(ws, msg) {
+    const session = sessions[msg.shareCode];
+    if (!session) {
+        ws.send(JSON.stringify({
+            event: "ERROR",
+            message: "Invalid share code",
+        }));
+        return;
+    }
+    const clientWs = session.clients.find((client) => client.clientId === msg.clientId);
+    if (ws === session.hostWS) {
+        if (clientWs === null || clientWs === void 0 ? void 0 : clientWs.clientWS) {
+            clientWs.clientWS.send(JSON.stringify({
+                event: EventType.IceCandidate,
+                candidate: msg.candidate,
+            }));
         }
-        else {
-            // Relay to the specific client
-            console.log("Message sent to CLIENT");
-            Object.values(sessions).forEach((session) => {
-                const client = session.clients.find((client) => client.originId === destination);
-                if (client) {
-                    client.clientWS.send(JSON.stringify(msg));
-                }
-            });
-        }
+    }
+    else if ((clientWs === null || clientWs === void 0 ? void 0 : clientWs.clientWS) === ws) {
+        session.hostWS.send(JSON.stringify({
+            event: EventType.IceCandidate,
+            candidate: msg.candidate,
+        }));
     }
     else {
-        console.log(`No peer found for destination: ${destination}`);
+        ws.send(JSON.stringify({
+            event: "ERROR",
+            message: "Invalid client",
+        }));
     }
-}
-// Handle heartbeat to keep the connection alive
-function handleHeartbeat(ws) {
-    ws.send(JSON.stringify({
-        event: EventType.Heartbeat,
-        data: { timestamp: new Date().toISOString() },
-    }));
 }
 // Helper function to generate a random share code
 function generateShareCode() {

@@ -9,9 +9,11 @@ var EventType;
     EventType["SendAnswerToHost"] = "EVENT_ANSWER";
     EventType["IceCandidate"] = "EVENT_ICE_CANDIDATE";
     EventType["RequestHostToSendOffer"] = "EVENT_REQUEST_HOST_TO_SEND_OFFER";
+    EventType["RequestNearByShareCode"] = "EVENT_REQUEST_NEAR_BY_SHARE_CODE";
 })(EventType || (EventType = {}));
 const wss = new ws_1.WebSocketServer({ port: 8080 });
 const sessions = {};
+const store = new Map();
 wss.on("connection", (ws) => {
     console.log("New client connected");
     ws.on("message", (message) => {
@@ -34,6 +36,9 @@ wss.on("connection", (ws) => {
                 break;
             case EventType.IceCandidate:
                 ExchangeIceCandidate(ws, msg);
+                break;
+            case EventType.RequestNearByShareCode:
+                generateNearByShareCode(ws, msg);
                 break;
             default:
                 console.log("Unknown event:", msg.event);
@@ -61,7 +66,14 @@ function handleShareCodeRequest(ws, msg) {
 }
 function genrateClientIdRequest(ws, msg) {
     const clientId = generateUniqueOrigin();
-    const session = sessions[msg.shareCode];
+    const IshareCode = msg.shareCode;
+    const sharedCode = store.has(IshareCode) ? store.get(IshareCode) : IshareCode;
+    console.log("Shared Code Inside 1st request from client:", sharedCode);
+    if (!sharedCode) {
+        console.log("share code is not available in ClientID");
+        return;
+    }
+    const session = sessions[sharedCode];
     if (!session) {
         ws.send(JSON.stringify({ event: "ERROR", message: "Invalid share code" }));
         return;
@@ -72,13 +84,14 @@ function genrateClientIdRequest(ws, msg) {
         clientId,
         fileName: session.fileName,
         fileLength: session.fileLength,
-        shareCode: msg.shareCode,
+        sharedCode: sharedCode,
     }));
-    console.log(`Client ${clientId} added to session ${msg.shareCode}`);
+    console.log(`Client ${clientId} added to session ${sharedCode}`);
 }
 function requestHostToSendOffer(ws, msg) {
     console.log("shareCode " + msg.shareCode);
-    const hostWs = sessions[msg.shareCode].hostWS;
+    const sharedCode = msg.shareCode;
+    const hostWs = sessions[sharedCode].hostWS;
     hostWs.send(JSON.stringify({
         event: EventType.RequestHostToSendOffer,
         clientId: msg.clientId,
@@ -86,11 +99,11 @@ function requestHostToSendOffer(ws, msg) {
     }));
 }
 function SendOfferToClient(ws, msg) {
-    const shareCode = msg.shareCode;
+    const sharedCode = msg.shareCode;
     const clientId = msg.clientId;
-    const session = sessions[shareCode];
+    const session = sessions[sharedCode];
     if (!session || session.hostWS !== ws) {
-        console.log("Host not fount", shareCode);
+        console.log("Host not fount", sharedCode);
         ws.send(JSON.stringify({
             event: "NOT_A_HOST",
         }));
@@ -107,18 +120,19 @@ function SendOfferToClient(ws, msg) {
     clientWs.clientWS.send(JSON.stringify({
         event: EventType.SendOfferToClient,
         offer: msg.offer,
-        shareCode,
+        sharedCode,
         clientId,
     }));
 }
 function SendAnswerToHost(msg) {
-    const shareCode = msg.shareCode;
+    const sharedCode = msg.shareCode;
     const clientId = msg.clientId;
-    const session = sessions[shareCode];
+    const session = sessions[sharedCode];
+    console.log("Inside SendAnswerToHost", sharedCode);
     session.hostWS.send(JSON.stringify({
         event: EventType.SendAnswerToHost,
         answer: msg.answer,
-        shareCode,
+        sharedCode,
         clientId,
     }));
 }
@@ -144,6 +158,7 @@ function ExchangeIceCandidate(ws, msg) {
         }
     }
     else if ((clientWs === null || clientWs === void 0 ? void 0 : clientWs.clientWS) === ws) {
+        console.log("Inside IceCandidate");
         session.hostWS.send(JSON.stringify({
             event: EventType.IceCandidate,
             candidate: msg.candidate,
@@ -158,6 +173,36 @@ function ExchangeIceCandidate(ws, msg) {
         }));
     }
 }
+function generateNearByShareCode(ws, msg) {
+    const sharedCode = msg.shareCode;
+    const session = sessions[msg.shareCode];
+    if (!sharedCode) {
+        console.log("There is no Share Code!!!!!");
+        return;
+    }
+    if (ws !== session.hostWS) {
+        console.log("Incorrect Host WS");
+        return;
+    }
+    let nearByShareCode = generateFourDigitCode();
+    if (!nearByShareCode) {
+        console.log("Not able to generate 4 digit Share Code");
+        return;
+    }
+    session.nearByShareCode = nearByShareCode;
+    if (!store.has(nearByShareCode)) {
+        store.set(nearByShareCode, sharedCode);
+    }
+    else {
+        nearByShareCode = generateFourDigitCode();
+        store.set(nearByShareCode, sharedCode);
+    }
+    console.log("updated shared Code in session", nearByShareCode);
+    session.hostWS.send(JSON.stringify({
+        event: EventType.RequestNearByShareCode,
+        nearByShareCode,
+    }));
+}
 // Helper function to generate a random share code
 function generateShareCode() {
     return Math.random().toString(36).substr(2, 10);
@@ -165,5 +210,16 @@ function generateShareCode() {
 // Helper function to generate a unique origin ID for clients
 function generateUniqueOrigin() {
     return Math.random().toString(36).substr(2, 10);
+}
+function generateFourDigitCode() {
+    return Math.floor(1000 + Math.random() * 9000).toString();
+}
+function addKeyValue(key, value) {
+    if (!store.has(key)) {
+        store.set(key, value);
+    }
+    else {
+        console.log(`Duplicate key detected: ${key}. Value not added.`);
+    }
 }
 console.log("WebSocket signaling server is running on ws://localhost:8080");

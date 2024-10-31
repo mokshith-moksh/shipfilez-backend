@@ -1,4 +1,8 @@
 import { WebSocketServer, WebSocket } from "ws";
+interface typeNearByShareCode {
+  event: EventType.RequestNearByShareCode;
+  shareCode: string;
+}
 interface typeShareCode {
   event: EventType.RequestShareCode;
   fileName: string[];
@@ -40,6 +44,7 @@ enum EventType {
   SendAnswerToHost = "EVENT_ANSWER",
   IceCandidate = "EVENT_ICE_CANDIDATE",
   RequestHostToSendOffer = "EVENT_REQUEST_HOST_TO_SEND_OFFER",
+  RequestNearByShareCode = "EVENT_REQUEST_NEAR_BY_SHARE_CODE",
 }
 
 const wss = new WebSocketServer({ port: 8080 });
@@ -48,12 +53,15 @@ const sessions: {
     hostWS: WebSocket;
     fileName: string[];
     fileLength: number;
+    nearByShareCode?: string;
     clients: {
       clientId: string;
       clientWS: WebSocket;
     }[];
   };
 } = {};
+
+const store = new Map<string, string>();
 
 wss.on("connection", (ws: WebSocket) => {
   console.log("New client connected");
@@ -86,6 +94,10 @@ wss.on("connection", (ws: WebSocket) => {
         ExchangeIceCandidate(ws, msg);
         break;
 
+      case EventType.RequestNearByShareCode:
+        generateNearByShareCode(ws, msg);
+        break;
+
       default:
         console.log("Unknown event:", msg.event);
     }
@@ -116,7 +128,14 @@ function handleShareCodeRequest(ws: WebSocket, msg: typeShareCode): void {
 
 function genrateClientIdRequest(ws: WebSocket, msg: typeGenClientId): void {
   const clientId = generateUniqueOrigin();
-  const session = sessions[msg.shareCode];
+  const IshareCode = msg.shareCode;
+  const sharedCode = store.has(IshareCode) ? store.get(IshareCode) : IshareCode;
+  console.log("Shared Code Inside 1st request from client:", sharedCode);
+  if (!sharedCode) {
+    console.log("share code is not available in ClientID");
+    return;
+  }
+  const session = sessions[sharedCode];
   if (!session) {
     ws.send(JSON.stringify({ event: "ERROR", message: "Invalid share code" }));
     return;
@@ -128,10 +147,10 @@ function genrateClientIdRequest(ws: WebSocket, msg: typeGenClientId): void {
       clientId,
       fileName: session.fileName,
       fileLength: session.fileLength,
-      shareCode: msg.shareCode,
+      sharedCode: sharedCode,
     })
   );
-  console.log(`Client ${clientId} added to session ${msg.shareCode}`);
+  console.log(`Client ${clientId} added to session ${sharedCode}`);
 }
 
 function requestHostToSendOffer(
@@ -140,7 +159,8 @@ function requestHostToSendOffer(
   msg: typeRequestHostToSendOfferMsg
 ): void {
   console.log("shareCode " + msg.shareCode);
-  const hostWs = sessions[msg.shareCode].hostWS;
+  const sharedCode = msg.shareCode;
+  const hostWs = sessions[sharedCode].hostWS;
   hostWs.send(
     JSON.stringify({
       event: EventType.RequestHostToSendOffer,
@@ -151,11 +171,11 @@ function requestHostToSendOffer(
 }
 
 function SendOfferToClient(ws: WebSocket, msg: typeSendOfferToClient): void {
-  const shareCode = msg.shareCode;
+  const sharedCode = msg.shareCode;
   const clientId = msg.clientId;
-  const session = sessions[shareCode];
+  const session = sessions[sharedCode];
   if (!session || session.hostWS !== ws) {
-    console.log("Host not fount", shareCode);
+    console.log("Host not fount", sharedCode);
     ws.send(
       JSON.stringify({
         event: "NOT_A_HOST",
@@ -177,21 +197,22 @@ function SendOfferToClient(ws: WebSocket, msg: typeSendOfferToClient): void {
     JSON.stringify({
       event: EventType.SendOfferToClient,
       offer: msg.offer,
-      shareCode,
+      sharedCode,
       clientId,
     })
   );
 }
 
 function SendAnswerToHost(msg: typeSendAnswerToHost): void {
-  const shareCode = msg.shareCode;
+  const sharedCode = msg.shareCode;
   const clientId = msg.clientId;
-  const session = sessions[shareCode];
+  const session = sessions[sharedCode];
+  console.log("Inside SendAnswerToHost", sharedCode);
   session.hostWS.send(
     JSON.stringify({
       event: EventType.SendAnswerToHost,
       answer: msg.answer,
-      shareCode,
+      sharedCode,
       clientId,
     })
   );
@@ -228,6 +249,7 @@ function ExchangeIceCandidate(
       );
     }
   } else if (clientWs?.clientWS === ws) {
+    console.log("Inside IceCandidate");
     session.hostWS.send(
       JSON.stringify({
         event: EventType.IceCandidate,
@@ -246,6 +268,39 @@ function ExchangeIceCandidate(
   }
 }
 
+function generateNearByShareCode(ws: WebSocket, msg: typeNearByShareCode) {
+  const sharedCode = msg.shareCode;
+  const session = sessions[msg.shareCode];
+  if (!sharedCode) {
+    console.log("There is no Share Code!!!!!");
+    return;
+  }
+  if (ws !== session.hostWS) {
+    console.log("Incorrect Host WS");
+    return;
+  }
+  let nearByShareCode = generateFourDigitCode();
+  if (!nearByShareCode) {
+    console.log("Not able to generate 4 digit Share Code");
+    return;
+  }
+
+  session.nearByShareCode = nearByShareCode;
+  if (!store.has(nearByShareCode)) {
+    store.set(nearByShareCode, sharedCode);
+  } else {
+    nearByShareCode = generateFourDigitCode();
+    store.set(nearByShareCode, sharedCode);
+  }
+  console.log("updated shared Code in session", nearByShareCode);
+  session.hostWS.send(
+    JSON.stringify({
+      event: EventType.RequestNearByShareCode,
+      nearByShareCode,
+    })
+  );
+}
+
 // Helper function to generate a random share code
 function generateShareCode(): string {
   return Math.random().toString(36).substr(2, 10);
@@ -254,6 +309,18 @@ function generateShareCode(): string {
 // Helper function to generate a unique origin ID for clients
 function generateUniqueOrigin(): string {
   return Math.random().toString(36).substr(2, 10);
+}
+
+function generateFourDigitCode() {
+  return Math.floor(1000 + Math.random() * 9000).toString();
+}
+
+function addKeyValue(key: string, value: string) {
+  if (!store.has(key)) {
+    store.set(key, value);
+  } else {
+    console.log(`Duplicate key detected: ${key}. Value not added.`);
+  }
 }
 
 console.log("WebSocket signaling server is running on ws://localhost:8080");

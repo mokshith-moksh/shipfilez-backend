@@ -104,6 +104,21 @@ wss.on("connection", (ws: WebSocket) => {
   });
   ws.on("close", () => {
     console.log("Client disconnected");
+    // Find and delete the session if this was the host
+    for (const shareCode in sessions) {
+      const session = sessions[shareCode];
+      if (session.hostWS === ws) {
+        // Remove session data from both sessions and store
+        delete sessions[shareCode];
+        for (const [key, value] of store.entries()) {
+          if (value === shareCode) {
+            store.delete(key);
+          }
+        }
+        console.log(`Session ${shareCode} deleted due to host disconnection`);
+        break;
+      }
+    }
   });
 });
 

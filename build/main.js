@@ -101,6 +101,7 @@ function genrateClientIdRequest(ws, msg) {
         fileLength: session.fileLength,
         sharedCode: sharedCode,
     }));
+    console.log("filedeatail", session.fileName, session.fileLength);
     console.log(`Client ${clientId} added to session ${sharedCode}`);
 }
 function requestHostToSendOffer(ws, msg) {

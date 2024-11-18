@@ -165,6 +165,7 @@ function genrateClientIdRequest(ws: WebSocket, msg: typeGenClientId): void {
       sharedCode: sharedCode,
     })
   );
+  console.log("filedeatail", session.fileName, session.fileLength);
   console.log(`Client ${clientId} added to session ${sharedCode}`);
 }
 
@@ -175,7 +176,15 @@ function requestHostToSendOffer(
 ): void {
   console.log("shareCode " + msg.shareCode);
   const sharedCode = msg.shareCode;
+  if (!sharedCode) {
+    console.log("No shared code");
+    return;
+  }
   const hostWs = sessions[sharedCode].hostWS;
+  if (!hostWs) {
+    console.log("No Host WS");
+    return;
+  }
   hostWs.send(
     JSON.stringify({
       event: EventType.RequestHostToSendOffer,
@@ -220,8 +229,20 @@ function SendOfferToClient(ws: WebSocket, msg: typeSendOfferToClient): void {
 
 function SendAnswerToHost(msg: typeSendAnswerToHost): void {
   const sharedCode = msg.shareCode;
+  if (!sharedCode) {
+    console.log("No shared code");
+    return;
+  }
   const clientId = msg.clientId;
+  if (!clientId) {
+    console.log("No client code");
+    return;
+  }
   const session = sessions[sharedCode];
+  if (!session) {
+    console.log("No session code");
+    return;
+  }
   console.log("Inside SendAnswerToHost", sharedCode);
   session.hostWS.send(
     JSON.stringify({

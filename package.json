@@ -12,11 +12,15 @@
   "license": "ISC",
   "description": "",
   "devDependencies": {
+    "@types/cors": "^2.8.17",
+    "@types/express": "^5.0.0",
     "@types/uuid": "^10.0.0",
     "@types/ws": "^8.5.12",
     "tsc-watch": "^6.2.0"
   },
   "dependencies": {
+    "cors": "^2.8.5",
+    "express": "^4.21.1",
     "uuid": "^10.0.0",
     "ws": "^8.18.0"
   }

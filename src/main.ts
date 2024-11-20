@@ -1,53 +1,39 @@
 import { WebSocketServer, WebSocket } from "ws";
-interface typeNearByShareCode {
-  event: EventType.RequestNearByShareCode;
-  shareCode: string;
-}
-interface typeShareCode {
-  event: EventType.RequestShareCode;
-  fileName: string[];
-  fileLength: number;
-}
-interface typeGenClientId {
-  event: EventType.RequestClientId;
-  shareCode: string;
-}
-interface typeRequestHostToSendOfferMsg {
-  event: EventType.RequestHostToSendOffer;
-  shareCode: string;
-  clientId: string;
-}
+import {
+  EventType,
+  typeExchangeIceCandidate,
+  typeGenClientId,
+  typeNearByShareCode,
+  typeRequestHostToSendOfferMsg,
+  typeSendAnswerToHost,
+  typeSendOfferToClient,
+  typeShareCode,
+} from "./types";
+import http from "http";
+import express from "express";
+import {
+  generateShareCode,
+  generateUniqueOrigin,
+  generateFourDigitCode,
+} from "./helper";
+import cors from "cors";
+const app = express();
+const server = http.createServer(app);
 
-interface typeSendOfferToClient {
-  event: EventType.SendOfferToClient;
-  shareCode: string;
-  clientId: string;
-  offer: any;
-}
-interface typeSendAnswerToHost {
-  event: EventType.SendAnswerToHost;
-  shareCode: string;
-  clientId: string;
-  answer: any;
-}
-interface typeExchangeIceCandidate {
-  event: EventType.IceCandidate;
-  shareCode: string;
-  clientId: string;
-  candidate: any;
-  from: string;
-}
-enum EventType {
-  RequestShareCode = "EVENT_REQUEST_SHARE_CODE",
-  RequestClientId = "EVENT_REQUEST_CLIENT_ID",
-  SendOfferToClient = "EVENT_OFFER",
-  SendAnswerToHost = "EVENT_ANSWER",
-  IceCandidate = "EVENT_ICE_CANDIDATE",
-  RequestHostToSendOffer = "EVENT_REQUEST_HOST_TO_SEND_OFFER",
-  RequestNearByShareCode = "EVENT_REQUEST_NEAR_BY_SHARE_CODE",
-}
+const wss = new WebSocketServer({ server });
 
-const wss = new WebSocketServer({ port: 8080 });
+app.use(
+  cors({
+    origin: "http://localhost:3000",
+    methods: ["GET", "POST"],
+  })
+);
+
+app.get("/", (req, res) => {
+  res.status(200).json({ message: "OK" });
+});
+
+//If needed to scale replace with redis
 const sessions: {
   [shareCode: string]: {
     hostWS: WebSocket;
@@ -60,10 +46,15 @@ const sessions: {
     }[];
   };
 } = {};
-
+//If needed to scale replace with redis
 const store = new Map<string, string>();
 
-wss.on("connection", (ws: WebSocket) => {
+wss.on("connection", (ws: WebSocket, req) => {
+  const origin = req.headers.origin;
+  if (origin !== "http://localhost:3000") {
+    ws.close(1008, "Origin not allowed");
+    return;
+  }
   console.log("New client connected");
 
   ws.on("message", (message: string) => {
@@ -337,26 +328,6 @@ function generateNearByShareCode(ws: WebSocket, msg: typeNearByShareCode) {
   );
 }
 
-// Helper function to generate a random share code
-function generateShareCode(): string {
-  return Math.random().toString(36).substr(2, 10);
-}
-
-// Helper function to generate a unique origin ID for clients
-function generateUniqueOrigin(): string {
-  return Math.random().toString(36).substr(2, 10);
-}
-
-function generateFourDigitCode() {
-  return Math.floor(1000 + Math.random() * 9000).toString();
-}
-
-function addKeyValue(key: string, value: string) {
-  if (!store.has(key)) {
-    store.set(key, value);
-  } else {
-    console.log(`Duplicate key detected: ${key}. Value not added.`);
-  }
-}
-
-console.log("WebSocket signaling server is running on ws://localhost:8080");
+server.listen(8080, () => {
+  console.log(`Server is running on http://localhost:${8080}`);
+});

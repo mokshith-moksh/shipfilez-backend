@@ -37,6 +37,7 @@ export interface typeExchangeIceCandidate {
   from: string;
 }
 export enum EventType {
+  EVENT_HEART_BEAT = "EVENT_HEART_BEAT",
   RequestShareCode = "EVENT_REQUEST_SHARE_CODE",
   RequestClientId = "EVENT_REQUEST_CLIENT_ID",
   SendOfferToClient = "EVENT_OFFER",

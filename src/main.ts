@@ -61,6 +61,13 @@ wss.on("connection", (ws: WebSocket, req) => {
     const msg = JSON.parse(message);
 
     switch (msg.event) {
+      case EventType.EVENT_HEART_BEAT:
+        const response = JSON.stringify({
+          event: "event_heartbeat_response",
+          server_time: new Date().toISOString(),
+        });
+        ws.send(response);
+        break;
       case EventType.RequestShareCode:
         handleShareCodeRequest(ws, msg);
         break;

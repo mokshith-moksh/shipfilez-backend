@@ -17,6 +17,11 @@ import {
   generateFourDigitCode,
 } from "./helper";
 import cors from "cors";
+import "dotenv/config";
+
+const PORT = process.env.PORT || 8080;
+const CORS_ORIGIN = process.env.CORS_ORIGIN || "*";
+
 const app = express();
 const server = http.createServer(app);
 
@@ -24,7 +29,7 @@ const wss = new WebSocketServer({ server });
 
 app.use(
   cors({
-    origin: "http://localhost:3000",
+    origin: CORS_ORIGIN,
     methods: ["GET", "POST"],
   })
 );
@@ -50,13 +55,7 @@ const sessions: {
 const store = new Map<string, string>();
 
 wss.on("connection", (ws: WebSocket, req) => {
-  const origin = req.headers.origin;
-  if (origin !== "http://localhost:3000") {
-    ws.close(1008, "Origin not allowed");
-    return;
-  }
   console.log("New client connected");
-
   ws.on("message", (message: string) => {
     const msg = JSON.parse(message);
 
@@ -335,6 +334,6 @@ function generateNearByShareCode(ws: WebSocket, msg: typeNearByShareCode) {
   );
 }
 
-server.listen(8080, () => {
-  console.log(`Server is running on http://localhost:${8080}`);
+server.listen(Number(PORT), "0.0.0.0", () => {
+  console.log(`Server is running on http://0.0.0.0:${PORT}`);
 });

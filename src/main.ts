@@ -39,7 +39,6 @@ app.get("/", (req, res) => {
   res.status(200).json({ message: "OK" });
 });
 
-// If needed to scale replace with redis
 const sessions: {
   [shareCode: string]: {
     hostWS: WebSocket;
@@ -53,18 +52,14 @@ const sessions: {
   };
 } = {};
 
-// If needed to scale replace with redis
 const store = new Map<string, string>();
 
-// Global guards: prevents process from exiting silently
 process.on("uncaughtException", (err) => {
   console.error("Uncaught Exception:", err);
-  // Optionally: send metrics / restart orchestrator will restart process
 });
 
 process.on("unhandledRejection", (reason) => {
   console.error("Unhandled Promise Rejection:", reason);
-  // Optionally: send metrics
 });
 
 wss.on("connection", (ws: WebSocket, req) => {
@@ -227,6 +222,7 @@ function genrateClientIdRequest(ws: WebSocket, msg: typeGenClientId): void {
         JSON.stringify({ event: "ERROR", message: "Invalid share code" })
       );
       console.log("share code is not available in ClientID");
+      ws.close();
       return;
     }
     const session = sessions[sharedCode];

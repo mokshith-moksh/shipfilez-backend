@@ -1,11 +1,13 @@
-export function generateShareCode(): string {
-  return Math.random().toString(36).substr(2, 10);
+import { randomUUID, randomBytes } from "crypto";
+
+export function genrateSessionId(): string {
+  return randomUUID();
 }
 
-export function generateUniqueOrigin(): string {
-  return Math.random().toString(36).substr(2, 10);
+export function genrateClientId(): string {
+  return "clientId-" + randomBytes(6).toString("hex"); // prefixed to differentiate
 }
 
-export function generateFourDigitCode() {
-  return Math.floor(1000 + Math.random() * 9000).toString();
+export function generateFourDigitCode(): string {
+  return Math.floor(1000 + Math.random() * 9000).toString(); // ensures 4 digits
 }

@@ -16,8 +16,8 @@ import {
 } from "./types";
 
 import {
-  generateShareCode,
-  generateUniqueOrigin,
+  genrateSessionId,
+  genrateClientId,
   generateFourDigitCode,
 } from "./helper";
 
@@ -183,7 +183,7 @@ wss.on("connection", (ws: WebSocket, req) => {
 
 function handleShareCodeRequest(ws: WebSocket, msg: typeShareCode): void {
   try {
-    const shareCode = generateShareCode();
+    const shareCode = genrateSessionId();
     sessions[shareCode] = {
       hostWS: ws,
       clients: [],
@@ -209,15 +209,20 @@ function handleShareCodeRequest(ws: WebSocket, msg: typeShareCode): void {
 
 function genrateClientIdRequest(ws: WebSocket, msg: typeGenClientId): void {
   try {
-    const clientId = generateUniqueOrigin();
-    const IshareCode = msg.shareCode;
-    // If the provided code is a 4-digit nearBy code, map it to real share code
-    const sharedCode =
-      typeof IshareCode === "string" && store.has(IshareCode)
-        ? store.get(IshareCode)!
-        : IshareCode;
+    const clientId = genrateClientId();
+    const sharecodeFromClient = msg.shareCode;
+    let sharedCode;
 
-    if (!sharedCode || typeof sharedCode !== "string") {
+    if (sharecodeFromClient.length == 4 && store.has(sharecodeFromClient)) {
+      console.log("code is entered from nearby and store has it");
+      sharedCode = store.get(sharecodeFromClient);
+    } else if (sessions[sharecodeFromClient]) {
+      console.log("code is auto and sessions has it");
+      sharedCode = sharecodeFromClient;
+    }
+
+    if (!sharedCode) {
+      console.log("get out of here");
       ws.send(
         JSON.stringify({ event: "ERROR", message: "Invalid share code" })
       );

@@ -541,6 +541,8 @@ function generateNearByShareCode(ws: WebSocket, msg: typeNearByShareCode) {
   }
 }
 
-server.listen(Number(PORT), "0.0.0.0", () => {
-  console.log(`Server is running on http://0.0.0.0:${PORT}`);
-});
+// server.listen(Number(PORT), "0.0.0.0", () => {
+//   console.log(`Server is running on http://0.0.0.0:${PORT}`);
+// });
+
+export default server;

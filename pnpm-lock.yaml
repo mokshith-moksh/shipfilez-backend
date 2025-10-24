@@ -38,7 +38,10 @@ importers:
         version: 8.5.12
       tsc-watch:
         specifier: ^6.2.0
-        version: 6.2.0(typescript@5.6.2)
+        version: 6.2.0(typescript@5.9.3)
+      typescript:
+        specifier: ^5.6.3
+        version: 5.9.3
 
 packages:
 
@@ -396,8 +399,8 @@ packages:
     resolution: {integrity: sha512-TkRKr9sUTxEH8MdfuCSP7VizJyzRNMjj2J2do2Jr3Kym598JVdEksuzPQCnlFPW4ky9Q+iA+ma9BGm06XQBy8g==}
     engines: {node: '>= 0.6'}
 
-  typescript@5.6.2:
-    resolution: {integrity: sha512-NW8ByodCSNCwZeghjN3o+JX5OFH0Ojg6sadjEKY4huZ52TqbJTJnDo5+Tw98lSy63NZvi4n+ez5m2u5d4PkZyw==}
+  typescript@5.9.3:
+    resolution: {integrity: sha512-jl1vZzPDinLr9eUt3J/t7V6FgNEw9QjvBPdysz9KfQDD41fQrC2Y4vKQdiaUpFT4bXlb1RHhLpp8wtm6M5TgSw==}
     engines: {node: '>=14.17'}
     hasBin: true
 
@@ -827,20 +830,20 @@ snapshots:
 
   toidentifier@1.0.1: {}
 
-  tsc-watch@6.2.0(typescript@5.6.2):
+  tsc-watch@6.2.0(typescript@5.9.3):
     dependencies:
       cross-spawn: 7.0.3
       node-cleanup: 2.1.2
       ps-tree: 1.2.0
       string-argv: 0.3.2
-      typescript: 5.6.2
+      typescript: 5.9.3
 
   type-is@1.6.18:
     dependencies:
       media-typer: 0.3.0
       mime-types: 2.1.35
 
-  typescript@5.6.2: {}
+  typescript@5.9.3: {}
 
   undici-types@6.19.8: {}
 

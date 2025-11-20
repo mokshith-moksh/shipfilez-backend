@@ -1,0 +1,44 @@
+steps:
+  # 1. Install dependencies
+  - name: "node:latest"
+    entrypoint: "bash"
+    args: ["-c", "npm install"]
+
+  # 2. Build TypeScript -> outputs to /build
+  - name: "node:latest"
+    entrypoint: "bash"
+    args: ["-c", "npm run build"]
+
+  # 3. Build Docker image
+  - name: "gcr.io/cloud-builders/docker"
+    args:
+      - build
+      - "-t"
+      - "gcr.io/$PROJECT_ID/backend"
+      - "."
+
+  # 4. Push image
+  - name: "gcr.io/cloud-builders/docker"
+    args:
+      - push
+      - "gcr.io/$PROJECT_ID/backend"
+
+  # 5. Deploy to Cloud Run
+  - name: "gcr.io/google.com/cloudsdktool/cloud-sdk"
+    entrypoint: "gcloud"
+    args:
+      [
+        "run",
+        "deploy",
+        "backend-service",
+        "--image",
+        "gcr.io/$PROJECT_ID/backend",
+        "--region",
+        "us-central1",
+        "--platform",
+        "managed",
+        "--allow-unauthenticated",
+      ]
+
+images:
+  - "gcr.io/$PROJECT_ID/backend"

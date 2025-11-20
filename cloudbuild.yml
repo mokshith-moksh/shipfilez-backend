@@ -1,15 +1,12 @@
 steps:
-  # 1. Install dependencies
   - name: "node:latest"
     entrypoint: "bash"
     args: ["-c", "npm install"]
 
-  # 2. Build TypeScript -> outputs to /build
   - name: "node:latest"
     entrypoint: "bash"
     args: ["-c", "npm run build"]
 
-  # 3. Build Docker image
   - name: "gcr.io/cloud-builders/docker"
     args:
       - build
@@ -17,13 +14,11 @@ steps:
       - "gcr.io/$PROJECT_ID/backend"
       - "."
 
-  # 4. Push image
   - name: "gcr.io/cloud-builders/docker"
     args:
       - push
       - "gcr.io/$PROJECT_ID/backend"
 
-  # 5. Deploy to Cloud Run
   - name: "gcr.io/google.com/cloudsdktool/cloud-sdk"
     entrypoint: "gcloud"
     args:
@@ -42,3 +37,6 @@ steps:
 
 images:
   - "gcr.io/$PROJECT_ID/backend"
+
+options:
+  logging: CLOUD_LOGGING_ONLY # ⭐ Fix that removes the error
